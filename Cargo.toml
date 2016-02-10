@@ -1,0 +1,4 @@
+[package]
+name = "web_server"
+version = "0.1.0"
+authors = ["Kevin Wilde <kevinwilde2018@u.northwestern.edu>"]
