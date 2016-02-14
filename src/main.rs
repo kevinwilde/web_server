@@ -9,7 +9,6 @@
 use std::net::TcpListener;
 use std::thread;
 
-mod read_request;
 mod response;
 
 fn main() {

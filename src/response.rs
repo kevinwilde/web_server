@@ -6,22 +6,24 @@
 
 "]
 
-use std::fs::File;
-use std::io::{ErrorKind, Read};
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, ErrorKind, Read, Write};
 use std::net::TcpStream;
 
-use read_request::get_file_path_from_request;
-
 pub fn handle_client(stream: TcpStream) {
-    println!("Correct request received!");
-    let mut buf = String::new();
+    let mut request_buf = String::new();
     let mut mut_stream = stream;
-    if let Ok(n) = mut_stream.read_to_string(&mut buf) {
+
+    if let Ok(n) = mut_stream.read_to_string(&mut request_buf) {
 		if n > 0 {
-			match get_file_path_from_request(buf) {
+			let response_code: usize;
+
+			match get_file_path_from_request(request_buf.to_string()) {
 				Some(path) => {
+					
 					match File::open(clean_path(path.to_string())) {
 						Ok(file) => {
+							response_code = 200;
 							let file_type = get_file_type(path.to_string());
 							let mut file_content_buf = String::new();
 							let mut mut_file = file;
@@ -29,19 +31,47 @@ pub fn handle_client(stream: TcpStream) {
 								print_ok_response(file_type.to_string(), n, file_content_buf);
 							}
 						},
+
 						Err(e) => {
 							match e.kind() {
-								ErrorKind::NotFound => println!("404 File Not Found"),
-								ErrorKind::PermissionDenied => println!("403 Permission Denied"),
+								ErrorKind::NotFound =>  {
+									response_code = 404;
+									println!("404 File Not Found");
+								},
+								ErrorKind::PermissionDenied => {
+									response_code = 403;
+									println!("403 Permission Denied");
+								},
 								_ => panic!("Unknown error in opening file")
 							}
 						}
 				    };
+				},
+
+				None =>  {
+					response_code = 400;
+					println!("400 Bad Request")
 				}
-				None => println!("400 Bad Request")
 		    }
+			log_request_and_response("date".to_string(), request_buf, response_code);
 		}
     }
+}
+
+fn get_file_path_from_request(line: String) -> Option<String> {
+    let v = split_request(line);
+    if v[0].to_uppercase() == "GET" && v[2].to_uppercase().contains("HTTP") {
+        Some(v[1].to_owned())
+    } else {
+        None
+    }
+}
+
+fn split_request(line: String) -> Vec<String> {
+    line.split(|c: char| c.is_whitespace())
+    	.map(|s| s.to_owned())
+    	.filter(|s| s.len() > 0)
+    	.collect()
 }
 
 fn clean_path(path: String) -> String {
@@ -70,11 +100,45 @@ fn print_ok_response(content_type: String, content_length: usize, file_content: 
 	println!("{}", file_content);
 }
 
+fn log_request_and_response(date: String, request: String, response_code: usize) {
+	let path_to_log_file = "log.txt";
+	let f = match OpenOptions::new().write(true).append(true).open(path_to_log_file) {
+		Ok(f) => f,
+		Err(e) => panic!("Error opening log file: {}", e)
+	};
+	let mut writer = BufWriter::new(&f);
+	match writer.write_fmt(format_args!("Date: {}, Request: {}, Response Code: {}", date, request, response_code)) {
+		Ok(_) => return,
+		Err(e) => panic!("Error writing to log file: {}", e)
+	}
+	// match OpenOptions::new().read(true).write(true).open(path_to_log_file); {
+	// 	Ok(f) => f.write_fmt(format_args!("Date: {}, Request: {}, Response Code: {}", date, request, response_code)),
+	// 	Err(e) => panic!("Error writing to log file")
+	// };
+}
+
 
 #[cfg(test)]
 mod response_tests {
 	
+	use super::clean_path;
 	use super::get_file_type;
+
+	#[test]
+	fn clean_path_test_remove_front_slash() {
+		assert_eq!(clean_path("/src/main.rs".to_string()), 
+			"src/main.rs".to_string());
+		assert_eq!(clean_path("/src/tmp/some/dir/hello.py".to_string()), 
+			"src/tmp/some/dir/hello.py".to_string());
+	}
+
+	#[test]
+	fn clean_path_test_no_front_slash() {
+		assert_eq!(clean_path("src/main.rs".to_string()), 
+			"src/main.rs".to_string());
+		assert_eq!(clean_path("src/tmp/some/dir/hello.py".to_string()), 
+			"src/tmp/some/dir/hello.py".to_string());
+	}
 
 	#[test]
 	fn get_file_type_test_html() {
@@ -94,9 +158,13 @@ mod response_tests {
 			"text/plain".to_string());
 		assert_eq!(get_file_type("test/some/dir/again/index.txt".to_string()), 
 			"text/plain".to_string());
-		assert_eq!(get_file_type("other.doc".to_string()), 
+		assert_eq!(get_file_type("other.css".to_string()), 
 			"text/plain".to_string());
-		assert_eq!(get_file_type("some.pdf".to_string()), 
+		assert_eq!(get_file_type("some.js".to_string()), 
+			"text/plain".to_string());
+		assert_eq!(get_file_type("another.py".to_string()), 
+			"text/plain".to_string());
+		assert_eq!(get_file_type("what.pdf".to_string()), 
 			"text/plain".to_string());
 	}
 
