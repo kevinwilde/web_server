@@ -1,12 +1,16 @@
+// Christopher Chen and Kevin Wilde
+// csc404, kjw731
+// EECS 395
 
+#[doc="
 
-use std::net::{TcpListener, TcpStream};
+"]
+
+use std::net::TcpListener;
 use std::thread;
 
-fn handle_client(stream: TcpStream) {
-    // ...
-    println!("Correct request received!");
-}
+mod read_request;
+mod response;
 
 fn main() {
 	let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
@@ -17,7 +21,7 @@ fn main() {
 	        Ok(stream) => {
 	            thread::spawn(move|| {
 	                // connection succeeded
-	                handle_client(stream)
+	                response::handle_client(stream)
 	            });
 	        }
 	        Err(e) => {
