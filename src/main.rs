@@ -3,7 +3,8 @@
 // EECS 395
 
 #[doc="
-
+Still need to handle directories vs files
+Spaces in path
 "]
 
 use std::net::TcpListener;
@@ -20,7 +21,7 @@ fn main() {
 	        Ok(stream) => {
 	            thread::spawn(move|| {
 	                // connection succeeded
-	                response::handle_client(stream)
+	                response::handle_client(stream);
 	            });
 	        }
 	        Err(e) => {

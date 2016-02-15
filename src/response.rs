@@ -7,13 +7,16 @@
 "]
 
 use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, ErrorKind, Read, Write};
+use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
 use std::net::TcpStream;
 
+extern crate time;
+
 pub fn handle_client(stream: TcpStream) {
+    println!("New request");
     let mut request_buf = String::new();
     let mut mut_stream = stream;
-
+	// let mut reader = BufReader::new(stream);
     if let Ok(n) = mut_stream.read_to_string(&mut request_buf) {
 		if n > 0 {
 			let response_code: usize;
@@ -25,11 +28,13 @@ pub fn handle_client(stream: TcpStream) {
 						Ok(file) => {
 							response_code = 200;
 							let file_type = get_file_type(path.to_string());
-							let mut file_content_buf = String::new();
-							let mut mut_file = file;
-							if let Ok(n) = mut_file.read_to_string(&mut file_content_buf) {
-								print_ok_response(file_type.to_string(), n, file_content_buf);
-							}
+							deliver_ok_response(mut_stream, file_type.to_string(), file);
+							
+							// let mut file_content_buf = String::new();
+							// let mut mut_file = file;
+							// if let Ok(n) = mut_file.read_to_string(&mut file_content_buf) {
+								// deliver_ok_response(mut_stream, file_type.to_string(), n, file_content_buf);
+							// }
 						},
 
 						Err(e) => {
@@ -53,9 +58,10 @@ pub fn handle_client(stream: TcpStream) {
 					println!("400 Bad Request")
 				}
 		    }
-			log_request_and_response("date".to_string(), request_buf, response_code);
+			log_request_and_response(time::now().asctime().to_string(), request_buf, response_code);
 		}
     }
+    println!("Done with request");
 }
 
 fn get_file_path_from_request(line: String) -> Option<String> {
@@ -84,30 +90,58 @@ fn clean_path(path: String) -> String {
 
 // File type is either html for files whose suffix is .html or plain for all others
 fn get_file_type(path: String) -> String {
-	if path.trim()[path.len()-4..].to_lowercase() == "html" {
+	if path.trim()[path.len()-5..].to_lowercase() == ".html" {
 		"text/html".to_string()
 	} else {
 		"text/plain".to_string()
 	}
 }
 
-fn print_ok_response(content_type: String, content_length: usize, file_content: String) {
-	println!("HTTP/1.0 200 OK");
-	println!("csc404-kjw731-web-server/0.1");
-	println!("Content-type {}", content_type);
-	println!("Content-length: {}", content_length);
-	println!("");
-	println!("{}", file_content);
+// fn deliver_ok_response(mut stream: TcpStream, content_type: String, content_length: usize, file_content: String) {
+fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: File) {
+	//let mut bufreader = BufReader::new(stream);
+	// println!("HTTP/1.0 200 OK");
+	// println!("csc404-kjw731-web-server/0.1");
+	// println!("Content-type: {}", content_type);
+	// println!("Content-length: {}", content_length);
+	// println!("");
+	// println!("{}", file_content);
+	println!("Delivering ok response");
+	//stream.write_fmt(format_args!("HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: {}\nContent-length: {}\n\n{}\n", 
+	//	content_type, content_length, file_content));
+	// stream.write_all(&String::from("yo waddup").into_bytes()[0..]);
+	// match stream.write_all(&file_content.into_bytes()[0..]) {
+	// 	Ok(_) => {},
+	// 	Err(_) => {}
+	// }
+	let mut buf = vec![0;1024];
+	loop {
+		match file.read(&mut buf) {
+			Ok(n) => {
+				if n <= 0 {break};
+				match stream.write_all(&buf[0..n]) {
+					Ok(_) => {}
+			    	Err(_) => {break}
+			   }
+			},
+			Err(_) => break
+		}
+	}
+	println!("Done delivering ok response");
 }
 
 fn log_request_and_response(date: String, request: String, response_code: usize) {
 	let path_to_log_file = "log.txt";
-	let f = match OpenOptions::new().write(true).append(true).open(path_to_log_file) {
+	let f = match OpenOptions::new()
+					.create(true)
+					.write(true)
+					.append(true)
+					.open(path_to_log_file) {
 		Ok(f) => f,
 		Err(e) => panic!("Error opening log file: {}", e)
 	};
 	let mut writer = BufWriter::new(&f);
-	match writer.write_fmt(format_args!("Date: {}, Request: {}, Response Code: {}", date, request, response_code)) {
+	match writer.write_fmt(format_args!("Date: {}\nRequest: {}\nResponse Code: {}\n", date, request, response_code)) {
 		Ok(_) => return,
 		Err(e) => panic!("Error writing to log file: {}", e)
 	}
