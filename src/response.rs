@@ -110,11 +110,12 @@ fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: F
 	// println!("Content-length: {}", content_length);
 	// println!("");
 	// println!("{}", file_content);
-	match stream.write_fmt(format_args!("HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: {}\n\n", 
-		content_type)) {
-		Ok(_) => {},
-		Err(_) => panic!("Error delivering response")
-	}
+	
+	// match stream.write_fmt(format_args!("HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: {}\n\n", 
+	// 	content_type)) {
+	// 	Ok(_) => {},
+	// 	Err(_) => panic!("Error delivering response")
+	// }
 
 	let mut buf = vec![0;1024];
 	while let Ok(n) = file.read(&mut buf) {
