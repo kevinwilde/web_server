@@ -7,33 +7,35 @@
 "]
 
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::net::TcpStream;
 
 extern crate time;
 
 pub fn handle_client(stream: TcpStream) {
     println!("New request");
-    let mut request_buf = String::new();
-    let mut mut_stream = stream;
-	// let mut reader = BufReader::new(stream);
-    if let Ok(n) = mut_stream.read_to_string(&mut request_buf) {
+	let mut stream_reader = BufReader::new(stream);
+	let mut request_buf = Vec::new();
+	if let Ok(n) = stream_reader.read_until(b'\n', &mut request_buf) {
+    	println!("Read done");
 		if n > 0 {
+			println!("...And n > 0");
 			let response_code: usize;
-
-			match get_file_path_from_request(request_buf.to_string()) {
+			let stream = stream_reader.into_inner();
+			match get_file_path_from_request(String::from_utf8(request_buf.to_owned()).unwrap()) {
 				Some(path) => {
-					
+					println!("Got path: {}", path);
 					match File::open(clean_path(path.to_string())) {
 						Ok(file) => {
+							println!("200");
 							response_code = 200;
 							let file_type = get_file_type(path.to_string());
-							deliver_ok_response(mut_stream, file_type.to_string(), file);
+							deliver_ok_response(stream, file_type.to_string(), file);
 							
 							// let mut file_content_buf = String::new();
 							// let mut mut_file = file;
 							// if let Ok(n) = mut_file.read_to_string(&mut file_content_buf) {
-								// deliver_ok_response(mut_stream, file_type.to_string(), n, file_content_buf);
+								// deliver_ok_response(stream, file_type.to_string(), n, file_content_buf);
 							// }
 						},
 
@@ -41,10 +43,12 @@ pub fn handle_client(stream: TcpStream) {
 							match e.kind() {
 								ErrorKind::NotFound =>  {
 									response_code = 404;
+									deliver_error_response(stream, response_code, "File Not Found".to_string());
 									println!("404 File Not Found");
 								},
 								ErrorKind::PermissionDenied => {
 									response_code = 403;
+									deliver_error_response(stream, response_code, "Permission Denied".to_string());
 									println!("403 Permission Denied");
 								},
 								_ => panic!("Unknown error in opening file")
@@ -55,18 +59,19 @@ pub fn handle_client(stream: TcpStream) {
 
 				None =>  {
 					response_code = 400;
+					deliver_error_response(stream, response_code, "Bad Request".to_string());
 					println!("400 Bad Request")
 				}
 		    }
-			log_request_and_response(time::now().asctime().to_string(), request_buf, response_code);
+			log_request_and_response(time::now().asctime().to_string(), String::from_utf8(request_buf.to_owned()).unwrap(), response_code);
 		}
     }
     println!("Done with request");
 }
 
 fn get_file_path_from_request(line: String) -> Option<String> {
-    let v = split_request(line);
-    if v[0].to_uppercase() == "GET" && v[2].to_uppercase().contains("HTTP") {
+	let v = split_request(line);
+    if v.len() == 3 && v[0].to_uppercase() == "GET" && v[2].to_uppercase().contains("HTTP") {
         Some(v[1].to_owned())
     } else {
         None
@@ -97,7 +102,6 @@ fn get_file_type(path: String) -> String {
 	}
 }
 
-// fn deliver_ok_response(mut stream: TcpStream, content_type: String, content_length: usize, file_content: String) {
 fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: File) {
 	//let mut bufreader = BufReader::new(stream);
 	// println!("HTTP/1.0 200 OK");
@@ -106,28 +110,35 @@ fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: F
 	// println!("Content-length: {}", content_length);
 	// println!("");
 	// println!("{}", file_content);
-	println!("Delivering ok response");
-	//stream.write_fmt(format_args!("HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: {}\nContent-length: {}\n\n{}\n", 
-	//	content_type, content_length, file_content));
-	// stream.write_all(&String::from("yo waddup").into_bytes()[0..]);
-	// match stream.write_all(&file_content.into_bytes()[0..]) {
-	// 	Ok(_) => {},
-	// 	Err(_) => {}
-	// }
-	let mut buf = vec![0;1024];
-	loop {
-		match file.read(&mut buf) {
-			Ok(n) => {
-				if n <= 0 {break};
-				match stream.write_all(&buf[0..n]) {
-					Ok(_) => {}
-			    	Err(_) => {break}
-			   }
-			},
-			Err(_) => break
-		}
+	match stream.write_fmt(format_args!("HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: {}\n\n", 
+		content_type)) {
+		Ok(_) => {},
+		Err(_) => panic!("Error delivering response")
 	}
-	println!("Done delivering ok response");
+
+	let mut buf = vec![0;1024];
+	while let Ok(n) = file.read(&mut buf) {
+		if n <= 0 {
+			break;
+		}
+		match stream.write_all(&buf[0..n]) {
+			Ok(_) => {},
+	    	Err(_) => break
+	   }
+	}
+}
+
+fn deliver_error_response(mut stream: TcpStream, error_code: usize, error_message: String) {
+	match stream.write_fmt(format_args!("HTTP/1.0 {} \ncsc404-kjw731-web-server/0.1\n{}\n\n", 
+		error_code, error_message)) {
+		Ok(_) => {},
+		Err(_) => panic!("Error delivering response")
+	}
+	let n = error_message.len();
+	match stream.write_all(&error_message.into_bytes()[0..n]) {
+		Ok(_) => {},
+    	Err(_) => panic!("Error delivering response")
+   }
 }
 
 fn log_request_and_response(date: String, request: String, response_code: usize) {
@@ -145,10 +156,6 @@ fn log_request_and_response(date: String, request: String, response_code: usize)
 		Ok(_) => return,
 		Err(e) => panic!("Error writing to log file: {}", e)
 	}
-	// match OpenOptions::new().read(true).write(true).open(path_to_log_file); {
-	// 	Ok(f) => f.write_fmt(format_args!("Date: {}, Request: {}, Response Code: {}", date, request, response_code)),
-	// 	Err(e) => panic!("Error writing to log file")
-	// };
 }
 
 
