@@ -13,7 +13,7 @@ use std::net::TcpStream;
 extern crate time;
 
 pub fn handle_client(stream: TcpStream) {
-    println!("New request");
+	println!("New request");
 	let mut stream_reader = BufReader::new(stream);
 	let mut request_buf = Vec::new();
 	if let Ok(n) = stream_reader.read_until(b'\n', &mut request_buf) {
