@@ -51,8 +51,8 @@ pub fn handle_client(stream: TcpStream) {
 
 fn get_file_path_from_request(line: String) -> Option<String> {
     let v = split_request(line);
-    if v.len() == 3 && v[0].to_uppercase() == "GET" && v[2].to_uppercase().contains("HTTP") {
-        Some(clean_path(v[1].to_owned()))
+    if v.len() >= 3 && v[0].to_uppercase() == "GET" && v[v.len() - 1].to_uppercase().contains("HTTP") {
+        Some(clean_path(v[1..v.len() - 1].join(" ").to_string()))
     } else {
         None
     }

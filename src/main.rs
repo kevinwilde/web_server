@@ -3,8 +3,9 @@
 // EECS 395
 
 #[doc="
-Spaces in path?
-Log file -- multiple threads trying to write
+Spaces in path? Split whitespace, check first and last for GET and HTTP, concat the remaining
+Content-length: Use chars.count iterator on the file handler. Don't worry about traversing twice.
+Log file -- multiple threads trying to write: use mutex, test with random delays and multiple threads
 "]
 
 use std::net::TcpListener;
