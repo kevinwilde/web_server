@@ -66,9 +66,10 @@ fn split_request(line: String) -> Vec<String> {
 }
 
 fn clean_path(path: String) -> String {
+    let path = path.replace("%20", " ");
+    let n = path.len();
     let leading_slash: bool;
     let ending_slash: bool;
-    let n = path.len();
     
     if &path[0..1] == "/" {
         leading_slash = true;
@@ -152,10 +153,18 @@ fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &Vec<u8>, more_
     success
 }
 
-// File type is either html for files whose suffix is .html or plain for all others
+// File type is either:
+//    text/html for files whose suffix is .html 
+//    text/javascript for files whose suffix is .js
+//    text/css for files whose suffix is .css
+//    text/plain for all others
 fn get_file_type(path: String) -> String {
     if path.trim()[path.len()-5..].to_lowercase() == ".html" {
         "text/html".to_string()
+    } else if path.trim()[path.len()-3..].to_lowercase() == ".js" {
+        "text/javascript".to_string()
+    } else if path.trim()[path.len()-4..].to_lowercase() == ".css" {
+        "text/css".to_string()
     } else {
         "text/plain".to_string()
     }
