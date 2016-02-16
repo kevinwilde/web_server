@@ -3,7 +3,6 @@
 // EECS 395
 
 #[doc="
-Still need to handle directories vs files
 Spaces in path?
 Log file -- multiple threads trying to write
 "]

@@ -24,18 +24,20 @@ pub fn handle_client(stream: TcpStream) {
                 Some(path) => {
                     println!("Got path: {}", path);
                     if is_file(&path) {
-                        try_to_open_file(&path, stream, request_buf);
+                        try_to_open_file(&path, &stream, &request_buf, false);
                     } else {
                         // Path is to a directory
                         // Search for index.html, index.txt, index.shtml etc
                         println!("DIRECTORY!");
-                        unimplemented!();
+                        let mut try = try_to_open_file(&(path.to_string() + "/index.html"), &stream, &request_buf, true);
+                        if !try { try = try_to_open_file(&(path.to_string() + "/index.shtml"), &stream, &request_buf, true); }
+                        if !try { try_to_open_file(&(path.to_string() + "/index.txt"), &stream, &request_buf, false); }
                     }
                 },
 
                 None =>  {
                     let response_code = 400;
-                    deliver_error_response(stream, response_code, "Bad Request".to_string());
+                    deliver_error_response(&stream, response_code, "Bad Request".to_string());
                     println!("400 Bad Request");
                     log_request_and_response(time::now().asctime().to_string(), 
                         String::from_utf8(request_buf.to_owned()).unwrap(), 
@@ -67,7 +69,7 @@ fn clean_path(path: String) -> String {
     let leading_slash: bool;
     let ending_slash: bool;
     let n = path.len();
-
+    
     if &path[0..1] == "/" {
         leading_slash = true;
     } else {
@@ -106,10 +108,12 @@ fn is_file(path: &str) -> bool {
     return false;
 }
 
-fn try_to_open_file(path: &str, stream: TcpStream, request_buf: Vec<u8>, more_files_to_try: bool) {
-    let response_code: usize;
+fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &Vec<u8>, more_files_to_try: bool) -> bool {
+    let mut response_code = 0;
+    let success: bool;
     match File::open(&path) {
         Ok(file) => {
+            success = true;
             println!("200");
             response_code = 200;
             let file_type = get_file_type(path.to_string());
@@ -117,6 +121,8 @@ fn try_to_open_file(path: &str, stream: TcpStream, request_buf: Vec<u8>, more_fi
         },
 
         Err(e) => {
+            success = false;
+
             if !more_files_to_try {
                 match e.kind() {
                     ErrorKind::NotFound =>  {
@@ -138,9 +144,12 @@ fn try_to_open_file(path: &str, stream: TcpStream, request_buf: Vec<u8>, more_fi
             }
         }
     }
-    log_request_and_response(time::now().asctime().to_string(), 
-        String::from_utf8(request_buf.to_owned()).unwrap(), 
-        response_code);
+    if !more_files_to_try {
+        log_request_and_response(time::now().asctime().to_string(), 
+            String::from_utf8(request_buf.to_owned()).unwrap(), 
+            response_code);
+    }
+    success
 }
 
 // File type is either html for files whose suffix is .html or plain for all others
@@ -152,7 +161,7 @@ fn get_file_type(path: String) -> String {
     }
 }
 
-fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: File) {
+fn deliver_ok_response(mut stream: &TcpStream, content_type: String,  mut file: File) {
     // println!("HTTP/1.0 200 OK");
     // println!("csc404-kjw731-web-server/0.1");
     // println!("Content-type: {}", content_type);
@@ -162,10 +171,10 @@ fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: F
     
     // Why does this affect css and js files that go with html pages???
     // Why does this not appear in the browser?
-    // match stream.write_all(&"HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: ".to_string().into_bytes()[0..]){
-    //  Ok(_) => {},
-    //  Err(_) => panic!("Error delivering response")
-    // }
+    match stream.write_all(&"HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: ".to_string().into_bytes()[0..]){
+        Ok(_) => {},
+        Err(_) => panic!("Error delivering response")
+    }
 
     let mut buf = vec![0;2048];
     while let Ok(n) = file.read(&mut buf) {
@@ -179,7 +188,7 @@ fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: F
     }
 }
 
-fn deliver_error_response(mut stream: TcpStream, error_code: usize, error_message: String) {
+fn deliver_error_response(mut stream: &TcpStream, error_code: usize, error_message: String) {
     match stream.write_fmt(format_args!("HTTP/1.0 {} \ncsc404-kjw731-web-server/0.1\n{}\n\n", 
         error_code, error_message)) {
         Ok(_) => {},
