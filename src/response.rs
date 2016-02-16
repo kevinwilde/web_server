@@ -17,53 +17,31 @@ pub fn handle_client(stream: TcpStream) {
 	let mut stream_reader = BufReader::new(stream);
 	let mut request_buf = Vec::new();
 	if let Ok(n) = stream_reader.read_until(b'\n', &mut request_buf) {
-    	println!("Read done");
 		if n > 0 {
-			println!("...And n > 0");
-			let response_code: usize;
 			let stream = stream_reader.into_inner();
+			
 			match get_file_path_from_request(String::from_utf8(request_buf.to_owned()).unwrap()) {
 				Some(path) => {
 					println!("Got path: {}", path);
-					match File::open(clean_path(path.to_string())) {
-						Ok(file) => {
-							println!("200");
-							response_code = 200;
-							let file_type = get_file_type(path.to_string());
-							deliver_ok_response(stream, file_type.to_string(), file);
-							
-							// let mut file_content_buf = String::new();
-							// let mut mut_file = file;
-							// if let Ok(n) = mut_file.read_to_string(&mut file_content_buf) {
-								// deliver_ok_response(stream, file_type.to_string(), n, file_content_buf);
-							// }
-						},
-
-						Err(e) => {
-							match e.kind() {
-								ErrorKind::NotFound =>  {
-									response_code = 404;
-									deliver_error_response(stream, response_code, "File Not Found".to_string());
-									println!("404 File Not Found");
-								},
-								ErrorKind::PermissionDenied => {
-									response_code = 403;
-									deliver_error_response(stream, response_code, "Permission Denied".to_string());
-									println!("403 Permission Denied");
-								},
-								_ => panic!("Unknown error in opening file")
-							}
-						}
-				    };
+					if is_file(&path) {
+						try_to_open_file(&path, stream, request_buf);
+					} else {
+						// Path is to a directory
+						// Search for index.html, index.txt, index.shtml etc
+						println!("DIRECTORY!");
+						unimplemented!();
+					}
 				},
 
 				None =>  {
-					response_code = 400;
+					let response_code = 400;
 					deliver_error_response(stream, response_code, "Bad Request".to_string());
-					println!("400 Bad Request")
+					println!("400 Bad Request");
+					log_request_and_response(time::now().asctime().to_string(), 
+						String::from_utf8(request_buf.to_owned()).unwrap(), 
+						response_code);
 				}
 		    }
-			log_request_and_response(time::now().asctime().to_string(), String::from_utf8(request_buf.to_owned()).unwrap(), response_code);
 		}
     }
     println!("Done with request");
@@ -72,7 +50,7 @@ pub fn handle_client(stream: TcpStream) {
 fn get_file_path_from_request(line: String) -> Option<String> {
 	let v = split_request(line);
     if v.len() == 3 && v[0].to_uppercase() == "GET" && v[2].to_uppercase().contains("HTTP") {
-        Some(v[1].to_owned())
+        Some(clean_path(v[1].to_owned()))
     } else {
         None
     }
@@ -86,11 +64,81 @@ fn split_request(line: String) -> Vec<String> {
 }
 
 fn clean_path(path: String) -> String {
+	let leading_slash: bool;
+	let ending_slash: bool;
+	let n = path.len();
+
 	if &path[0..1] == "/" {
-		path[1..].to_string()
+		leading_slash = true;
 	} else {
-		path
+		leading_slash = false;
 	}
+	
+	if &path[n-1..n] == "/" {
+		ending_slash = true;
+	} else {
+		ending_slash = false;
+	}
+
+	if leading_slash {
+		if ending_slash {
+			path[1..n-1].to_string()
+		} else {
+			path[1..].to_string()
+		}
+	} else {
+		if ending_slash {
+			path[0..n-1].to_string()
+		} else {
+			path
+		}
+	}
+}
+
+fn is_file(path: &str) -> bool {
+	for ch in path.chars().rev() {
+		if ch == '.' {
+			return true;
+		} else if ch == '/' {
+			return false;
+		}
+	}
+	return false;
+}
+
+fn try_to_open_file(path: &str, stream: TcpStream, request_buf: Vec<u8>) {
+	let response_code: usize;
+	match File::open(&path) {
+		Ok(file) => {
+			println!("200");
+			response_code = 200;
+			let file_type = get_file_type(path.to_string());
+			deliver_ok_response(stream, file_type.to_string(), file);
+		},
+
+		Err(e) => {
+			match e.kind() {
+				ErrorKind::NotFound =>  {
+					response_code = 404;
+					deliver_error_response(stream, 
+						response_code, 
+						"File Not Found".to_string());
+					println!("404 File Not Found");
+				},
+				ErrorKind::PermissionDenied => {
+					response_code = 403;
+					deliver_error_response(stream, 
+						response_code, 
+						"Permission Denied".to_string());
+					println!("403 Permission Denied");
+				},
+				_ => panic!("Unknown error in opening file")
+			}
+		}
+	}
+	log_request_and_response(time::now().asctime().to_string(), 
+		String::from_utf8(request_buf.to_owned()).unwrap(), 
+		response_code);
 }
 
 // File type is either html for files whose suffix is .html or plain for all others
@@ -103,7 +151,6 @@ fn get_file_type(path: String) -> String {
 }
 
 fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: File) {
-	//let mut bufreader = BufReader::new(stream);
 	// println!("HTTP/1.0 200 OK");
 	// println!("csc404-kjw731-web-server/0.1");
 	// println!("Content-type: {}", content_type);
@@ -111,13 +158,14 @@ fn deliver_ok_response(mut stream: TcpStream, content_type: String,  mut file: F
 	// println!("");
 	// println!("{}", file_content);
 	
-	// match stream.write_fmt(format_args!("HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: {}\n\n", 
-	// 	content_type)) {
+	// Why does this affect css and js files that go with html pages???
+	// Why does this not appear in the browser?
+	// match stream.write_all(&"HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: ".to_string().into_bytes()[0..]){
 	// 	Ok(_) => {},
 	// 	Err(_) => panic!("Error delivering response")
 	// }
 
-	let mut buf = vec![0;1024];
+	let mut buf = vec![0;2048];
 	while let Ok(n) = file.read(&mut buf) {
 		if n <= 0 {
 			break;
@@ -135,8 +183,7 @@ fn deliver_error_response(mut stream: TcpStream, error_code: usize, error_messag
 		Ok(_) => {},
 		Err(_) => panic!("Error delivering response")
 	}
-	let n = error_message.len();
-	match stream.write_all(&error_message.into_bytes()[0..n]) {
+	match stream.write_all(&error_message.into_bytes()[..]) {
 		Ok(_) => {},
     	Err(_) => panic!("Error delivering response")
    }
@@ -153,8 +200,9 @@ fn log_request_and_response(date: String, request: String, response_code: usize)
 		Err(e) => panic!("Error opening log file: {}", e)
 	};
 	let mut writer = BufWriter::new(&f);
-	match writer.write_fmt(format_args!("Date: {}\nRequest: {}\nResponse Code: {}\n", date, request, response_code)) {
-		Ok(_) => return,
+	match writer.write_fmt(format_args!("Date: {}\nRequest: {}\nResponse Code: {}\n", 
+		date, request, response_code)) {
+		Ok(_) => {},
 		Err(e) => panic!("Error writing to log file: {}", e)
 	}
 }

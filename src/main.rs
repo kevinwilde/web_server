@@ -4,7 +4,8 @@
 
 #[doc="
 Still need to handle directories vs files
-Spaces in path
+Spaces in path?
+Log file -- multiple threads trying to write
 "]
 
 use std::net::TcpListener;
