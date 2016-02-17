@@ -6,8 +6,8 @@
 
 "]
 
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
+use std::fs::{File};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
@@ -16,20 +16,19 @@ extern crate time;
 pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
     println!("New request");
     let mut stream_reader = BufReader::new(stream);
-    let mut request_buf = Vec::new();
-    if let Ok(n) = stream_reader.read_until(b'\n', &mut request_buf) {
+    let mut request_buf = String::new();
+    if let Ok(n) = stream_reader.read_line(&mut request_buf) {
         if n > 0 {
             let stream = stream_reader.into_inner();
             
-            match get_file_path_from_request(String::from_utf8(request_buf.to_owned()).unwrap()) {
+            match get_file_path_from_request(request_buf.to_string()) {
                 Some(path) => {
                     println!("Got path: {}", path);
                     if is_file(&path) {
                         try_to_open_file(&path, &stream, &request_buf, false, log);
                     } else {
                         // Path is to a directory
-                        // Search for index.html, index.txt, index.shtml etc
-                        println!("DIRECTORY!");
+                        println!("Directory");
                         let mut try = try_to_open_file(&(path.to_string() + "/index.html"), &stream, &request_buf, true, log);
                         if !try { try = try_to_open_file(&(path.to_string() + "/index.shtml"), &stream, &request_buf, true, log); }
                         if !try { try_to_open_file(&(path.to_string() + "/index.txt"), &stream, &request_buf, false, log); }
@@ -41,7 +40,7 @@ pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
                     deliver_error_response(&stream, response_code, "Bad Request".to_string());
                     println!("400 Bad Request");
                     log_request_and_response(log, time::now().asctime().to_string(), 
-                        String::from_utf8(request_buf.to_owned()).unwrap(), 
+                        request_buf.to_string(), 
                         response_code);
                 }
             }
@@ -111,7 +110,7 @@ fn is_file(path: &str) -> bool {
     return false;
 }
 
-fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &Vec<u8>, more_files_to_try: bool, log: &Arc<Mutex<File>>) -> bool {
+fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String, more_files_to_try: bool, log: &Arc<Mutex<File>>) -> bool {
     let mut response_code = 0;
     let success: bool;
     match File::open(&path) {
@@ -149,7 +148,7 @@ fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &Vec<u8>, more_
     }
     if !more_files_to_try {
         log_request_and_response(log, time::now().asctime().to_string(), 
-            String::from_utf8(request_buf.to_owned()).unwrap(), 
+            request_buf.to_string(), 
             response_code);
     }
     success
