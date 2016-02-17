@@ -9,10 +9,11 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::net::TcpStream;
+use std::sync::{Arc, Mutex};
 
 extern crate time;
 
-pub fn handle_client(stream: TcpStream) {
+pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
     println!("New request");
     let mut stream_reader = BufReader::new(stream);
     let mut request_buf = Vec::new();
@@ -24,14 +25,14 @@ pub fn handle_client(stream: TcpStream) {
                 Some(path) => {
                     println!("Got path: {}", path);
                     if is_file(&path) {
-                        try_to_open_file(&path, &stream, &request_buf, false);
+                        try_to_open_file(&path, &stream, &request_buf, false, log);
                     } else {
                         // Path is to a directory
                         // Search for index.html, index.txt, index.shtml etc
                         println!("DIRECTORY!");
-                        let mut try = try_to_open_file(&(path.to_string() + "/index.html"), &stream, &request_buf, true);
-                        if !try { try = try_to_open_file(&(path.to_string() + "/index.shtml"), &stream, &request_buf, true); }
-                        if !try { try_to_open_file(&(path.to_string() + "/index.txt"), &stream, &request_buf, false); }
+                        let mut try = try_to_open_file(&(path.to_string() + "/index.html"), &stream, &request_buf, true, log);
+                        if !try { try = try_to_open_file(&(path.to_string() + "/index.shtml"), &stream, &request_buf, true, log); }
+                        if !try { try_to_open_file(&(path.to_string() + "/index.txt"), &stream, &request_buf, false, log); }
                     }
                 },
 
@@ -39,7 +40,7 @@ pub fn handle_client(stream: TcpStream) {
                     let response_code = 400;
                     deliver_error_response(&stream, response_code, "Bad Request".to_string());
                     println!("400 Bad Request");
-                    log_request_and_response(time::now().asctime().to_string(), 
+                    log_request_and_response(log, time::now().asctime().to_string(), 
                         String::from_utf8(request_buf.to_owned()).unwrap(), 
                         response_code);
                 }
@@ -51,7 +52,8 @@ pub fn handle_client(stream: TcpStream) {
 
 fn get_file_path_from_request(line: String) -> Option<String> {
     let v = split_request(line);
-    if v.len() >= 3 && v[0].to_uppercase() == "GET" && v[v.len() - 1].to_uppercase().contains("HTTP") {
+    //HTTP methods are case sensitive. So, GET must be all-caps.
+    if v.len() >= 3 && v[0] == "GET" && v[v.len() - 1].to_uppercase().contains("HTTP") {
         Some(clean_path(v[1..v.len() - 1].join(" ").to_string()))
     } else {
         None
@@ -109,7 +111,7 @@ fn is_file(path: &str) -> bool {
     return false;
 }
 
-fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &Vec<u8>, more_files_to_try: bool) -> bool {
+fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &Vec<u8>, more_files_to_try: bool, log: &Arc<Mutex<File>>) -> bool {
     let mut response_code = 0;
     let success: bool;
     match File::open(&path) {
@@ -146,7 +148,7 @@ fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &Vec<u8>, more_
         }
     }
     if !more_files_to_try {
-        log_request_and_response(time::now().asctime().to_string(), 
+        log_request_and_response(log, time::now().asctime().to_string(), 
             String::from_utf8(request_buf.to_owned()).unwrap(), 
             response_code);
     }
@@ -171,13 +173,6 @@ fn get_file_type(path: String) -> String {
 }
 
 fn deliver_ok_response(mut stream: &TcpStream, content_type: String,  mut file: File) {
-    // println!("HTTP/1.0 200 OK");
-    // println!("csc404-kjw731-web-server/0.1");
-    // println!("Content-type: {}", content_type);
-    // println!("Content-length: {}", content_length);
-    // println!("");
-    // println!("{}", file_content);
-    
     let size = file.metadata().unwrap().len();
     let header = "HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: ".to_string() 
                     + &content_type + &"\nContent-length: " + &size.to_string() + &"\n\n";
@@ -200,29 +195,20 @@ fn deliver_ok_response(mut stream: &TcpStream, content_type: String,  mut file: 
 }
 
 fn deliver_error_response(mut stream: &TcpStream, error_code: usize, error_message: String) {
-    match stream.write_fmt(format_args!("HTTP/1.0 {} \ncsc404-kjw731-web-server/0.1\n{}\n\n", 
+    match stream.write_fmt(format_args!("HTTP/1.0 {} {} \ncsc404-kjw731-web-server/0.1\n\n", 
         error_code, error_message)) {
         Ok(_) => {},
         Err(_) => panic!("Error delivering response")
     }
-    match stream.write_all(&error_message.into_bytes()[..]) {
+    match stream.write_fmt(format_args!("{}\n", error_message)) {
         Ok(_) => {},
         Err(_) => panic!("Error delivering response")
    }
 }
 
-fn log_request_and_response(date: String, request: String, response_code: usize) {
-    let path_to_log_file = "log.txt";
-    let f = match OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .append(true)
-                    .open(path_to_log_file) {
-        Ok(f) => f,
-        Err(e) => panic!("Error opening log file: {}", e)
-    };
-    let mut writer = BufWriter::new(&f);
-    match writer.write_fmt(format_args!("Date: {}\nRequest: {}\nResponse Code: {}\n", 
+fn log_request_and_response(log: &Arc<Mutex<File>>, date: String, request: String, response_code: usize) {
+    let mut log_guard = log.lock().unwrap();
+    match log_guard.write_fmt(format_args!("Date: {}\r\nRequest: {}Response Code: {}\r\n\r\n", 
         date, request, response_code)) {
         Ok(_) => {},
         Err(e) => panic!("Error writing to log file: {}", e)
@@ -235,6 +221,7 @@ mod response_tests {
     
     use super::clean_path;
     use super::get_file_type;
+    use super::get_file_path_from_request;
 
     #[test]
     fn clean_path_test_remove_front_slash() {
@@ -253,7 +240,28 @@ mod response_tests {
     }
 
     #[test]
-    fn get_file_type_test_html() {
+    fn clean_path_test_spaces() {
+        assert_eq!(clean_path("this%20has%20spaces.txt".to_string()),
+            "this has spaces.txt".to_string());
+    }
+
+    #[test]
+    fn get_file_path_test_none() {
+        assert_eq!(None, get_file_path_from_request("GET test.txt".to_string()));
+        assert_eq!(None, get_file_path_from_request("PUT test.txt HTTP".to_string()));
+        assert_eq!(None, get_file_path_from_request("GET HTTP".to_string()));
+        assert_eq!(None, get_file_path_from_request("get test.txt HTTP".to_string()));
+    }
+
+    #[test]
+    fn get_file_path_test_some() {
+        assert_eq!(Some("test.txt".to_string()), get_file_path_from_request("GET test.txt HTTP".to_string()));
+        assert_eq!(Some("test.txt".to_string()), get_file_path_from_request("GET /test.txt/ http".to_string()));
+        assert_eq!(Some("this has spaces.css".to_string()), get_file_path_from_request("GET this has spaces.css HtTp".to_string()));
+    }
+
+    #[test]
+    fn get_file_type_test_web() {
         assert_eq!(get_file_type("blah.html".to_string()), 
             "text/html".to_string());
         assert_eq!(get_file_type("test/some/dir/again/index.html".to_string()), 
@@ -262,6 +270,10 @@ mod response_tests {
             "text/html".to_string());
         assert_eq!(get_file_type("alskgjhaksjghlaskdjagl.html".to_string()), 
             "text/html".to_string());
+        assert_eq!(get_file_type("other.css".to_string()), 
+            "text/css".to_string());
+        assert_eq!(get_file_type("some.js".to_string()), 
+            "text/javascript".to_string());
     }
 
     #[test]
@@ -270,14 +282,11 @@ mod response_tests {
             "text/plain".to_string());
         assert_eq!(get_file_type("test/some/dir/again/index.txt".to_string()), 
             "text/plain".to_string());
-        assert_eq!(get_file_type("other.css".to_string()), 
-            "text/plain".to_string());
-        assert_eq!(get_file_type("some.js".to_string()), 
-            "text/plain".to_string());
         assert_eq!(get_file_type("another.py".to_string()), 
             "text/plain".to_string());
         assert_eq!(get_file_type("what.pdf".to_string()), 
             "text/plain".to_string());
     }
+    
 
 }
