@@ -22,10 +22,12 @@ pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
             let stream = stream_reader.into_inner();
             
             match get_file_path_from_request(request_buf.to_string()) {
+
                 Some(path) => {
                     println!("Got path: {}", path);
+
                     if is_file(&path) {
-                        try_to_open_file(&path, &stream, &request_buf, false, log);
+                        try_to_open_file(&path, &stream, &request_buf, log, false);
                     } else {
                         // Path is to a directory
                         println!("Directory");
@@ -38,11 +40,11 @@ pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
                         }
 
                         let mut try = try_to_open_file(&(path.to_string() + "index.html"), 
-                            &stream, &request_buf, true, log);
+                            &stream, &request_buf, log, true);
                         if !try { try = try_to_open_file(&(path.to_string() + "index.shtml"), 
-                            &stream, &request_buf, true, log); }
+                            &stream, &request_buf, log, true); }
                         if !try { try_to_open_file(&(path.to_string() + "index.txt"), &stream, 
-                            &request_buf, false, log); }
+                            &request_buf, log, false); }
                     }
                 },
 
@@ -89,9 +91,9 @@ fn clean_path(path: String) -> String {
     // Remove leading "/" (always present)
     // and remove ending "/" (if present)
     if &path[n-1..n] == "/" {
-        path[1..n-1].to_string()
+        return path[1..n-1].to_string();
     } else {
-        path[1..].to_string()
+        return path[1..].to_string();
     }
 }
 
@@ -107,7 +109,7 @@ fn is_file(path: &str) -> bool {
 }
 
 fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String, 
-    more_files_to_try: bool, log: &Arc<Mutex<File>>) -> bool {
+    log: &Arc<Mutex<File>>, more_files_to_try: bool) -> bool {
     let mut response_code = 0;
     let success: bool;
     match File::open(&path) {
@@ -310,7 +312,5 @@ mod response_tests {
             get_file_type("another.py".to_string()));
         assert_eq!("text/plain".to_string(), 
             get_file_type("what.pdf".to_string()));
-    }
-    
-
+    } 
 }
