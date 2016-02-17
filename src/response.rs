@@ -123,15 +123,15 @@ fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String, more_f
                         response_code = 404;
                         deliver_error_response(stream, 
                             response_code, 
-                            "File Not Found".to_string());
-                        println!("404 File Not Found");
+                            "Not Found".to_string());
+                        println!("404 Not Found");
                     },
                     ErrorKind::PermissionDenied => {
                         response_code = 403;
                         deliver_error_response(stream, 
                             response_code, 
-                            "Permission Denied".to_string());
-                        println!("403 Permission Denied");
+                            "Forbidden".to_string());
+                        println!("403 Forbidden");
                     },
                     _ => panic!("Unknown error in opening file")
                 }
