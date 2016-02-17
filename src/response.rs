@@ -66,7 +66,7 @@ fn split_request(line: String) -> Vec<String> {
 }
 
 fn clean_path(path: String) -> String {
-    let path = path.replace("%20", " ");
+    //let path = path.replace("%20", " ");
     let n = path.len();
     let leading_slash: bool;
     let ending_slash: bool;
@@ -178,9 +178,11 @@ fn deliver_ok_response(mut stream: &TcpStream, content_type: String,  mut file: 
     // println!("");
     // println!("{}", file_content);
     
-    // Why does this affect css and js files that go with html pages???
-    // Why does this not appear in the browser?
-    match stream.write_all(&"HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: ".to_string().into_bytes()[0..]){
+    let size = file.metadata().unwrap().len();
+    let header = "HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: ".to_string() 
+                    + &content_type + &"\nContent-length: " + &size.to_string() + &"\n\n";
+
+    match stream.write_all(&header.into_bytes()[0..]){
         Ok(_) => {},
         Err(_) => panic!("Error delivering response")
     }
