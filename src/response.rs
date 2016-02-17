@@ -2,10 +2,6 @@
 // csc404, kjw731
 // EECS 395
 
-#[doc="
-
-"]
-
 use std::fs::{File};
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::TcpStream;
@@ -15,51 +11,51 @@ extern crate time;
 
 pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
     println!("New request");
+
     let mut stream_reader = BufReader::new(stream);
     let mut request_buf = String::new();
-    if let Ok(n) = stream_reader.read_line(&mut request_buf) {
-        if n > 0 {
-            let stream = stream_reader.into_inner();
-            
-            match get_file_path_from_request(request_buf.to_string()) {
 
-                Some(path) => {
-                    println!("Got path: {}", path);
+    if let Ok(_) = stream_reader.read_line(&mut request_buf) {
+        
+        let stream = stream_reader.into_inner();
+        print!("{}", &request_buf);
+        
+        match get_file_path_from_request(request_buf.to_string()) {
 
-                    if is_file(&path) {
-                        try_to_open_file(&path, &stream, &request_buf, log, false);
-                    } else {
-                        // Path is to a directory
-                        println!("Directory");
+            Some(path) => {
 
-                        // Edge Case: Look for index.{html,shtml,txt} in current directory
-                        // So add / to end of directory unless looking in current directory
-                        let mut path = path.to_string();
-                        if path.len() > 0 {
-                            path = path + "/";
-                        }
+                if is_file(&path) {
+                    let _ = try_to_open_file(&path, &stream, &request_buf, log, false);
+                } else {
+                    // Path is to a directory
 
-                        let mut try = try_to_open_file(&(path.to_string() + "index.html"), 
-                            &stream, &request_buf, log, true);
-                        if !try { try = try_to_open_file(&(path.to_string() + "index.shtml"), 
-                            &stream, &request_buf, log, true); }
-                        if !try { try_to_open_file(&(path.to_string() + "index.txt"), &stream, 
-                            &request_buf, log, false); }
+                    // Edge Case: Look for index.{html,shtml,txt} in current directory
+                    // So add / to end of directory unless looking in current directory
+                    let mut path = path.to_string();
+                    if path.len() > 0 {
+                        path = path + "/";
                     }
-                },
 
-                None =>  {
-                    let response_code = 400;
-                    deliver_error_response(&stream, response_code, "Bad Request".to_string());
-                    println!("400 Bad Request");
-                    log_request_and_response(log, time::now().asctime().to_string(), 
-                        request_buf.to_string(), 
-                        response_code);
+                    let mut try = try_to_open_file(&(path.to_string() + "index.html"), 
+                        &stream, &request_buf, log, true);
+                    if !try { try = try_to_open_file(&(path.to_string() + "index.shtml"), 
+                        &stream, &request_buf, log, true); }
+                    if !try { try_to_open_file(&(path.to_string() + "index.txt"), &stream, 
+                        &request_buf, log, false); }
                 }
+            },
+
+            None =>  {
+                let response_code = 400;
+                deliver_error_response(&stream, response_code, "Bad Request".to_string());
+                println!("400 Bad Request");
+                log_request_and_response(log, time::now().asctime().to_string(), 
+                    request_buf.to_string(), 
+                    response_code);
             }
         }
     }
-    println!("Done with request");
+    println!("Done with request\n");
 }
 
 fn get_file_path_from_request(line: String) -> Option<String> {
@@ -110,8 +106,10 @@ fn is_file(path: &str) -> bool {
 
 fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String, 
     log: &Arc<Mutex<File>>, more_files_to_try: bool) -> bool {
-    let mut response_code = 0;
+    
+    let response_code: usize;
     let success: bool;
+    
     match File::open(&path) {
         Ok(file) => {
             success = true;
@@ -119,6 +117,9 @@ fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String,
             response_code = 200;
             let file_type = get_file_type(path.to_string());
             deliver_ok_response(stream, file_type.to_string(), file);
+            log_request_and_response(log, time::now().asctime().to_string(), 
+                request_buf.to_string(), 
+                response_code);
         },
 
         Err(e) => {
@@ -133,6 +134,7 @@ fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String,
                             "Not Found".to_string());
                         println!("404 Not Found");
                     },
+
                     ErrorKind::PermissionDenied => {
                         response_code = 403;
                         deliver_error_response(stream, 
@@ -140,15 +142,14 @@ fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String,
                             "Forbidden".to_string());
                         println!("403 Forbidden");
                     },
+
                     _ => panic!("Unknown error in opening file")
                 }
+                log_request_and_response(log, time::now().asctime().to_string(), 
+                    request_buf.to_string(), 
+                    response_code);
             }
         }
-    }
-    if !more_files_to_try {
-        log_request_and_response(log, time::now().asctime().to_string(), 
-            request_buf.to_string(), 
-            response_code);
     }
     success
 }
@@ -175,10 +176,7 @@ fn deliver_ok_response(mut stream: &TcpStream, content_type: String,  mut file: 
     let header = "HTTP/1.0 200 OK\ncsc404-kjw731-web-server/0.1\nContent-type: ".to_string() 
                     + &content_type + &"\nContent-length: " + &size.to_string() + &"\n\n";
 
-    match stream.write_all(&header.into_bytes()[0..]){
-        Ok(_) => {},
-        Err(_) => panic!("Error delivering response")
-    }
+    stream.write_all(&header.into_bytes()[0..]).expect("Error delivering response");
 
     let mut buf = vec![0; 1024];
     while let Ok(n) = file.read(&mut buf) {
@@ -193,24 +191,15 @@ fn deliver_ok_response(mut stream: &TcpStream, content_type: String,  mut file: 
 }
 
 fn deliver_error_response(mut stream: &TcpStream, error_code: usize, error_message: String) {
-    match stream.write_fmt(format_args!("HTTP/1.0 {} {} \ncsc404-kjw731-web-server/0.1\n\n", 
-        error_code, error_message)) {
-        Ok(_) => {},
-        Err(_) => panic!("Error delivering response")
-    }
-    match stream.write_fmt(format_args!("{}\n", error_message)) {
-        Ok(_) => {},
-        Err(_) => panic!("Error delivering response")
-   }
+    stream.write_fmt(format_args!("HTTP/1.0 {} {} \ncsc404-kjw731-web-server/0.1\n\n", 
+        error_code, error_message)).expect("Error delivering response");
+    stream.write_fmt(format_args!("{}\n", error_message)).expect("Error delivering response");
 }
 
 fn log_request_and_response(log: &Arc<Mutex<File>>, date: String, request: String, response_code: usize) {
     let mut log_guard = log.lock().unwrap();
-    match log_guard.write_fmt(format_args!("Date: {}\r\nRequest: {}Response Code: {}\r\n\r\n", 
-        date, request, response_code)) {
-        Ok(_) => {},
-        Err(e) => panic!("Error writing to log file: {}", e)
-    }
+    log_guard.write_fmt(format_args!("Date: {}\r\nRequest: {}Response Code: {}\r\n\r\n", 
+        date, request, response_code)).expect("Error writing to log file");
 }
 
 

@@ -3,9 +3,20 @@
 // EECS 395
 
 #[doc="
-Spaces in path? Split whitespace, check first and last for GET and HTTP, concat the remaining
-Content-length: Use chars.count iterator on the file handler. Don't worry about traversing twice.
-Log file -- multiple threads trying to write: use mutex, test with random delays and multiple threads
+Assumptions:
+
+The method token in an HTTP request is case sensitive, in accordance with 
+https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1.1 
+So in the request, the word GET must be in all caps in order for it to be considered a 
+valid request.
+
+A path to a directory should end with a /. If it does not, the server will still be 
+able to find index.html, index.shtml, or index.txt, but in the case of an html file with 
+relative links to external resources, those relative links will be broken. This is in 
+accordance with 
+http://serverfault.com/questions/587002/apache2-301-redirect-when-missing-at-the-end-of-directory-in-the-url
+(this server does not implement the response code 301). When the path to a directory 
+ends with a / as it should, the server is of course able to resolve relative links. 
 "]
 
 use std::fs::{File, OpenOptions};
@@ -32,10 +43,10 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let file_clone = file.clone();
+                let file = file.clone();
                 thread::spawn(move|| {
                     // connection succeeded
-                    response::handle_client(stream, &file_clone);
+                    response::handle_client(stream, &file);
                 });
             }
             Err(e) => {
