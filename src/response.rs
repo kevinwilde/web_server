@@ -37,9 +37,12 @@ pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
                             path = path + "/";
                         }
 
-                        let mut try = try_to_open_file(&(path.to_string() + "index.html"), &stream, &request_buf, true, log);
-                        if !try { try = try_to_open_file(&(path.to_string() + "index.shtml"), &stream, &request_buf, true, log); }
-                        if !try { try_to_open_file(&(path.to_string() + "index.txt"), &stream, &request_buf, false, log); }
+                        let mut try = try_to_open_file(&(path.to_string() + "index.html"), 
+                            &stream, &request_buf, true, log);
+                        if !try { try = try_to_open_file(&(path.to_string() + "index.shtml"), 
+                            &stream, &request_buf, true, log); }
+                        if !try { try_to_open_file(&(path.to_string() + "index.txt"), &stream, 
+                            &request_buf, false, log); }
                     }
                 },
 
@@ -102,7 +105,8 @@ fn is_file(path: &str) -> bool {
     return false;
 }
 
-fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String, more_files_to_try: bool, log: &Arc<Mutex<File>>) -> bool {
+fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String, 
+    more_files_to_try: bool, log: &Arc<Mutex<File>>) -> bool {
     let mut response_code = 0;
     let success: bool;
     match File::open(&path) {
@@ -246,10 +250,14 @@ mod response_tests {
 
     #[test]
     fn get_file_path_test_some() {
-        assert_eq!(Some("test.txt".to_string()), get_file_path_from_request("GET /test.txt HTTP".to_string()));
-        assert_eq!(Some("test.txt".to_string()), get_file_path_from_request("GET /test.txt/ http".to_string()));
-        assert_eq!(Some("this has spaces.css".to_string()), get_file_path_from_request("GET /this has spaces.css HtTp".to_string()));
-        assert_eq!(Some("".to_string()), get_file_path_from_request("GET / HTTP".to_string()));
+        assert_eq!(Some("test.txt".to_string()), 
+            get_file_path_from_request("GET /test.txt HTTP".to_string()));
+        assert_eq!(Some("test.txt".to_string()), 
+            get_file_path_from_request("GET /test.txt/ http".to_string()));
+        assert_eq!(Some("this has spaces.css".to_string()), 
+            get_file_path_from_request("GET /this has spaces.css HtTp".to_string()));
+        assert_eq!(Some("".to_string()), 
+            get_file_path_from_request("GET / HTTP".to_string()));
     }
 
     #[test]
