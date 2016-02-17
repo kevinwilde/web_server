@@ -86,7 +86,8 @@ fn clean_path(path: String) -> String {
         return "".to_string();
     }
     
-    // Remove leading "/" and remove ending "/" if present
+    // Remove leading "/" (always present)
+    // and remove ending "/" (if present)
     if &path[n-1..n] == "/" {
         path[1..n-1].to_string()
     } else {
@@ -177,7 +178,7 @@ fn deliver_ok_response(mut stream: &TcpStream, content_type: String,  mut file: 
         Err(_) => panic!("Error delivering response")
     }
 
-    let mut buf = vec![0;2048];
+    let mut buf = vec![0; 1024];
     while let Ok(n) = file.read(&mut buf) {
         if n <= 0 {
             break;
@@ -215,8 +216,9 @@ fn log_request_and_response(log: &Arc<Mutex<File>>, date: String, request: Strin
 mod response_tests {
     
     use super::clean_path;
-    use super::get_file_type;
     use super::get_file_path_from_request;
+    use super::is_file;
+    use super::get_file_type;
 
     #[test]
     fn clean_path_test_remove_front_slash() {
@@ -261,31 +263,53 @@ mod response_tests {
     }
 
     #[test]
+    fn is_file_test_true() {
+        assert!(is_file("test.txt"));
+        assert!(is_file("index.html"));
+        assert!(is_file("some/dir/test.txt"));
+        assert!(is_file("client/scipts/app.js"));
+    }
+
+    #[test]
+    fn is_file_test_false() {
+        assert_eq!(false, is_file(""));
+        assert_eq!(false, is_file("dir/"));
+        assert_eq!(false, is_file("some/dir/"));
+        assert_eq!(false, is_file("dir"));
+        assert_eq!(false, is_file("some/dir"));
+    }
+
+    #[test]
     fn get_file_type_test_web() {
-        assert_eq!(get_file_type("blah.html".to_string()), 
-            "text/html".to_string());
-        assert_eq!(get_file_type("test/some/dir/again/index.html".to_string()), 
-            "text/html".to_string());
-        assert_eq!(get_file_type("a.html".to_string()), 
-            "text/html".to_string());
-        assert_eq!(get_file_type("alskgjhaksjghlaskdjagl.html".to_string()), 
-            "text/html".to_string());
-        assert_eq!(get_file_type("other.css".to_string()), 
-            "text/css".to_string());
-        assert_eq!(get_file_type("some.js".to_string()), 
-            "text/javascript".to_string());
+        // HTML
+        assert_eq!("text/html".to_string(), 
+            get_file_type("blah.html".to_string()));
+        assert_eq!("text/html".to_string(), 
+            get_file_type("test/some/dir/again/index.html".to_string()));
+        assert_eq!("text/html".to_string(), 
+            get_file_type("a.html".to_string()));
+        assert_eq!("text/html".to_string(), 
+            get_file_type("alskgjhaksjghlaskdjagl.html".to_string()));
+
+        // css
+        assert_eq!("text/css".to_string(), 
+            get_file_type("other.css".to_string()));
+
+        // Javascript
+        assert_eq!("text/javascript".to_string(), 
+            get_file_type("some.js".to_string()));
     }
 
     #[test]
     fn get_file_type_test_plain() {
-        assert_eq!(get_file_type("blah.txt".to_string()), 
-            "text/plain".to_string());
-        assert_eq!(get_file_type("test/some/dir/again/index.txt".to_string()), 
-            "text/plain".to_string());
-        assert_eq!(get_file_type("another.py".to_string()), 
-            "text/plain".to_string());
-        assert_eq!(get_file_type("what.pdf".to_string()), 
-            "text/plain".to_string());
+        assert_eq!("text/plain".to_string(), 
+            get_file_type("blah.txt".to_string()));
+        assert_eq!("text/plain".to_string(), 
+            get_file_type("test/some/dir/again/index.txt".to_string()));
+        assert_eq!("text/plain".to_string(), 
+            get_file_type("another.py".to_string()));
+        assert_eq!("text/plain".to_string(), 
+            get_file_type("what.pdf".to_string()));
     }
     
 
