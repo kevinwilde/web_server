@@ -66,7 +66,7 @@ fn split_request(line: String) -> Vec<String> {
 }
 
 fn clean_path(path: String) -> String {
-    //let path = path.replace("%20", " ");
+    let path = path.replace("%20", " ");
     let n = path.len();
     let leading_slash: bool;
     let ending_slash: bool;
