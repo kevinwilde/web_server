@@ -29,9 +29,17 @@ pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
                     } else {
                         // Path is to a directory
                         println!("Directory");
-                        let mut try = try_to_open_file(&(path.to_string() + "/index.html"), &stream, &request_buf, true, log);
-                        if !try { try = try_to_open_file(&(path.to_string() + "/index.shtml"), &stream, &request_buf, true, log); }
-                        if !try { try_to_open_file(&(path.to_string() + "/index.txt"), &stream, &request_buf, false, log); }
+
+                        // Edge Case: Look for index.{html,shtml,txt} in current directory
+                        // So add / to end of directory unless looking in current directory
+                        let mut path = path.to_string();
+                        if path.len() > 0 {
+                            path = path + "/";
+                        }
+
+                        let mut try = try_to_open_file(&(path.to_string() + "index.html"), &stream, &request_buf, true, log);
+                        if !try { try = try_to_open_file(&(path.to_string() + "index.shtml"), &stream, &request_buf, true, log); }
+                        if !try { try_to_open_file(&(path.to_string() + "index.txt"), &stream, &request_buf, false, log); }
                     }
                 },
 
@@ -52,7 +60,8 @@ pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
 fn get_file_path_from_request(line: String) -> Option<String> {
     let v = split_request(line);
     //HTTP methods are case sensitive. So, GET must be all-caps.
-    if v.len() >= 3 && v[0] == "GET" && v[v.len() - 1].to_uppercase().contains("HTTP") {
+    if v.len() >= 3 && v[0] == "GET" && &v[1][0..1] == "/" 
+      && v[v.len() - 1].to_uppercase().contains("HTTP") {
         Some(clean_path(v[1..v.len() - 1].join(" ").to_string()))
     } else {
         None
@@ -69,33 +78,16 @@ fn split_request(line: String) -> Vec<String> {
 fn clean_path(path: String) -> String {
     let path = path.replace("%20", " ");
     let n = path.len();
-    let leading_slash: bool;
-    let ending_slash: bool;
-    
-    if &path[0..1] == "/" {
-        leading_slash = true;
-    } else {
-        leading_slash = false;
-    }
-    
-    if &path[n-1..n] == "/" {
-        ending_slash = true;
-    } else {
-        ending_slash = false;
-    }
 
-    if leading_slash {
-        if ending_slash {
-            path[1..n-1].to_string()
-        } else {
-            path[1..].to_string()
-        }
+    if path == "/" {
+        return "".to_string();
+    }
+    
+    // Remove leading "/" and remove ending "/" if present
+    if &path[n-1..n] == "/" {
+        path[1..n-1].to_string()
     } else {
-        if ending_slash {
-            path[0..n-1].to_string()
-        } else {
-            path
-        }
+        path[1..].to_string()
     }
 }
 
@@ -231,32 +223,33 @@ mod response_tests {
     }
 
     #[test]
-    fn clean_path_test_no_front_slash() {
-        assert_eq!(clean_path("src/main.rs".to_string()), 
-            "src/main.rs".to_string());
-        assert_eq!(clean_path("src/tmp/some/dir/hello.py".to_string()), 
-            "src/tmp/some/dir/hello.py".to_string());
+    fn clean_path_test_remove_end_slash() {
+        assert_eq!(clean_path("/src/".to_string()), 
+            "src".to_string());
+        assert_eq!(clean_path("/src/tmp/some/dir/".to_string()), 
+            "src/tmp/some/dir".to_string());
     }
 
     #[test]
     fn clean_path_test_spaces() {
-        assert_eq!(clean_path("this%20has%20spaces.txt".to_string()),
+        assert_eq!(clean_path("/this%20has%20spaces.txt".to_string()),
             "this has spaces.txt".to_string());
     }
 
     #[test]
     fn get_file_path_test_none() {
-        assert_eq!(None, get_file_path_from_request("GET test.txt".to_string()));
-        assert_eq!(None, get_file_path_from_request("PUT test.txt HTTP".to_string()));
-        assert_eq!(None, get_file_path_from_request("GET HTTP".to_string()));
-        assert_eq!(None, get_file_path_from_request("get test.txt HTTP".to_string()));
+        assert_eq!(None, get_file_path_from_request("GET /test.txt".to_string()));
+        assert_eq!(None, get_file_path_from_request("PUT /test.txt HTTP".to_string()));
+        assert_eq!(None, get_file_path_from_request("get /test.txt HTTP".to_string()));
+        assert_eq!(None, get_file_path_from_request("GET test.txt HTTP".to_string()));
     }
 
     #[test]
     fn get_file_path_test_some() {
-        assert_eq!(Some("test.txt".to_string()), get_file_path_from_request("GET test.txt HTTP".to_string()));
+        assert_eq!(Some("test.txt".to_string()), get_file_path_from_request("GET /test.txt HTTP".to_string()));
         assert_eq!(Some("test.txt".to_string()), get_file_path_from_request("GET /test.txt/ http".to_string()));
-        assert_eq!(Some("this has spaces.css".to_string()), get_file_path_from_request("GET this has spaces.css HtTp".to_string()));
+        assert_eq!(Some("this has spaces.css".to_string()), get_file_path_from_request("GET /this has spaces.css HtTp".to_string()));
+        assert_eq!(Some("".to_string()), get_file_path_from_request("GET / HTTP".to_string()));
     }
 
     #[test]
