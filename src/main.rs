@@ -16,7 +16,16 @@ relative links to external resources, those relative links will be broken. This 
 accordance with 
 http://serverfault.com/questions/587002/apache2-301-redirect-when-missing-at-the-end-of-directory-in-the-url
 (this server does not implement the response code 301). When the path to a directory 
-ends with a / as it should, the server is of course able to resolve relative links. 
+ends with a / as it should, the server is of course able to resolve relative links.
+
+The assignment suggested considering all non-HTML files as plain text. This program
+recognizes .js and .css files in addition to HTML, so that web pages are rendered
+and function correctly.
+
+Web browsers convert spaces within a file into '%20' characters... the program
+handles these spaces appropriately such that the file can still be found. Spaces 
+in the path that are inputted through the command line via telnet are also properly 
+considered.
 "]
 
 use std::fs::{File, OpenOptions};
