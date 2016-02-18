@@ -23,7 +23,6 @@ pub fn handle_client(stream: TcpStream, log: &Arc<Mutex<File>>) {
         match get_file_path_from_request(request_buf.to_string()) {
 
             Some(path) => {
-
                 if is_file(&path) {
                     let _ = try_to_open_file(&path, &stream, &request_buf, log, false);
                 } else {
@@ -129,17 +128,13 @@ fn try_to_open_file(path: &str, stream: &TcpStream, request_buf: &String,
                 match e.kind() {
                     ErrorKind::NotFound =>  {
                         response_code = 404;
-                        deliver_error_response(stream, 
-                            response_code, 
-                            "Not Found".to_string());
+                        deliver_error_response(stream, response_code, "Not Found".to_string());
                         println!("404 Not Found");
                     },
 
                     ErrorKind::PermissionDenied => {
                         response_code = 403;
-                        deliver_error_response(stream, 
-                            response_code, 
-                            "Forbidden".to_string());
+                        deliver_error_response(stream, response_code, "Forbidden".to_string());
                         println!("403 Forbidden");
                     },
 
@@ -202,6 +197,7 @@ fn log_request_and_response(log: &Arc<Mutex<File>>, date: String, request: Strin
         date, request, response_code)).expect("Error writing to log file");
 }
 
+///////////////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
 mod response_tests {
