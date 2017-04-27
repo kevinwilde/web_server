@@ -24,13 +24,12 @@ assuming it is accessible. Otherwise the path triggers a 404-message.
 
 ## Assumptions
 * The method token in an HTTP request is case sensitive, in accordance with 
-[the information here] (https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1.1). 
+[the information here](https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1.1). 
 So in the request, the word GET must be in all caps in order for it to be considered a 
 valid request.
 * A path to a directory should end with a /. If it does not, the server will still be 
 able to find index.html, index.shtml, or index.txt, but in the case of an html file with 
 relative links to external resources, those relative links will be broken. This is in 
-accordance with [the information here] 
-(http://serverfault.com/questions/587002/apache2-301-redirect-when-missing-at-the-end-of-directory-in-the-url) 
+accordance with [the information here](http://serverfault.com/questions/587002/apache2-301-redirect-when-missing-at-the-end-of-directory-in-the-url) 
 (this server does not implement the response code 301). When the path to a directory 
 ends with a / as it should, the server is of course able to resolve relative links. 
